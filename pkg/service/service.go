@@ -3,36 +3,34 @@ package service
 import (
 	"os"
 
-	"github.com/sirupsen/logrus"
+	"telebotai/pkg/ai"
+
+	log "github.com/sirupsen/logrus"
 )
 
-type AI interface {
-	MakeRequest(text string) (answer string, err error)
+type Service struct{}
+
+func New() *Service {
+	return &Service{}
 }
 
-type TeleBot interface {
-	Listen()
-}
-
-type Service struct {
-	AI
-	TeleBot
-}
-
-func (s *Service) Run() {
-	aiService, err := CreateAiService(os.Getenv("OPENAI_API_KEY"), "configs/api_request.json")
+func (s *Service) MustRun() {
+	openai_key := os.Getenv("OPENAI_API_KEY")
+	if openai_key == "" {
+		log.Fatal("OPENAI_API_KEY env is empty")
+	}
+	aiService, err := ai.NewAiService(openai_key, "configs/api_request.json")
 	if err != nil {
-		logrus.Fatalf("Cannot create AI Service %s", err.Error())
+		log.WithError(err).Fatalf("failed to create AI Service")
 	}
 
-	bot, err := NewTeleBot(os.Getenv("OPENAI_API_KEY"), aiService)
+	bot, err := NewTelegramBot(openai_key, aiService)
 	if err != nil {
-		logrus.Fatalf("Can't connect telegram bot: %s", err.Error())
+		log.WithError(err).Fatalf("failed connect telegram bot")
 	}
-
 	bot.Listen()
 }
 
 func (s *Service) Stop() {
-
+	log.Debug("service was stopped")
 }

@@ -1,63 +1,57 @@
 package service
 
 import (
-	"log"
+	"fmt"
 	"os"
+	"telebotai/pkg/ai"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
-	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
 
 type TelegramBot struct {
-	Bot *tgbotapi.BotAPI
-	ai  *AiService
+	bot       *tgbotapi.BotAPI
+	aiService *ai.Service
 }
 
-func NewTeleBot(token string, ai *AiService) (*TelegramBot, error) {
+func NewTelegramBot(token string, aiService *ai.Service) (*TelegramBot, error) {
 	bot, err := tgbotapi.NewBotAPI(os.Getenv("TELEBOT_API"))
 	if err != nil {
-		logrus.Fatalf("Cannot connect to telegram bot, err: %s", err.Error())
+		log.WithError(err).Fatal("failed to connect to telegram bot")
 	}
-
-	return &TelegramBot{bot, ai}, err
+	return &TelegramBot{
+		bot:       bot,
+		aiService: aiService,
+	}, err
 }
 
 func (tB *TelegramBot) Listen() {
 	updateConfig := tgbotapi.NewUpdate(0)
 	updateConfig.Timeout = 30
-
-	updates, err := tB.Bot.GetUpdatesChan(updateConfig)
+	updates, err := tB.bot.GetUpdatesChan(updateConfig)
 	if err != nil {
-		logrus.Printf("error occured while getting updates chain %s", err.Error())
+		log.WithError(err).Fatal("filed to get updates")
 	}
 
 	for update := range updates {
-
 		if update.Message == nil {
 			continue
 		}
-
 		msg := tgbotapi.NewMessage(update.Message.Chat.ID, update.Message.Text)
 		msg.ReplyToMessageID = update.Message.MessageID
 
-		go func(tgbotapi.MessageConfig) {
-			log.Println("start working")
-
-			aiAnswer, err := tB.ai.MakeRequest(msg.Text)
-			if err != nil {
-				logrus.Printf("can't get answer from AI, err: %s", err.Error())
-				return
-			}
-
-			msg.Text = aiAnswer
-
-			if _, err := tB.Bot.Send(msg); err != nil {
-				logrus.Printf("can't send message, err: %s", err.Error())
-				return
-			}
-
-			log.Printf("result")
-		}(msg)
-
+		go tB.processMessage(msg)
 	}
+}
+
+func (tB *TelegramBot) processMessage(msg tgbotapi.MessageConfig) error {
+	aiAnswer, err := tB.aiService.MakeRequest(msg.Text)
+	if err != nil {
+		return fmt.Errorf("failed to make request, err: %w", err)
+	}
+	msg.Text = aiAnswer
+	if _, err := tB.bot.Send(msg); err != nil {
+		return fmt.Errorf("failed to send message, err: %w", err)
+	}
+	return nil
 }

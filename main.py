@@ -1,14 +1,13 @@
-import telebot
+import telebot, openai
 import os
-import openai
-import json
 
-with open("config.json") as f:
-    conf = json.load(f)
-    print(conf)
+telebot_key, open_api_key = os.getenv("TELEBOT_API"), os.getenv("OPENAI_API_KEY")
+if telebot_key == "" or open_api_key == "":
+    print("TELEBOT_API or OPENAI_API_KEY env is empty")
+    exit(1)
 
-bot = telebot.TeleBot(token=conf["TELEBOT_API"])
-openai.api_key = conf["OPENAI_API_KEY"]
+bot = telebot.TeleBot(telebot_key)
+openai.api_key = open_api_key
 
 @bot.message_handler(func=lambda _: True)
 def handle_message(message):

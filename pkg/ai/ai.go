@@ -1,17 +1,16 @@
-package service
+package ai
 
 import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
-
-	"github.com/sirupsen/logrus"
 )
 
-type AiService struct {
+type Service struct {
 	Token string
 	Request
 }
@@ -38,61 +37,56 @@ type Request struct {
 
 // CreateAiService gets token string
 // and name of file with configuration of OpenAI API
-func CreateAiService(token string, confFilename string) (*AiService, error) {
-	rawData, err := os.ReadFile(confFilename)
+func NewAiService(token string, configFilename string) (*Service, error) {
+	rawData, err := os.ReadFile(configFilename)
 	if err != nil {
-		logrus.Printf("cannot configure OpenAI API, error: &s", err.Error())
-		return nil, err
+		return nil, fmt.Errorf("cannot read config file")
+	}
+	var requestConfig Request
+	if err = json.Unmarshal(rawData, &requestConfig); err != nil {
+		return nil, fmt.Errorf("failed to unmarshall request config, err: %w", err)
 	}
 
-	var req Request
-	err = json.Unmarshal(rawData, &req)
-	if err != nil {
-		logrus.Printf("cannot unmarshall configuration of AI API, err: %s", err.Error())
-		return nil, err
-	}
-
-	return &AiService{token, req}, nil
+	return &Service{
+		Token:   token,
+		Request: requestConfig,
+	}, nil
 }
 
 // MakeRequest add text string to prompt of AiService struct
 // and send request to OpenAI API for completion creating
 // then parse response and return text of answer
-func (aS *AiService) MakeRequest(text string) (answer string, err error) {
-	aS.Prompt = text
-	body, err := json.Marshal(aS.Request)
+func (s *Service) MakeRequest(text string) (answer string, err error) {
+	s.Prompt = text
+	body, err := json.Marshal(s.Request)
 	if err != nil {
-		logrus.Printf("can't convert aiService in body format, err: %s", err.Error())
-		return "", err
+		return "", fmt.Errorf("cannot convert aiService in body format, err: %w", err)
 	}
 
 	req, err := http.NewRequest("POST", "https://api.openai.com/v1/completions", bytes.NewReader(body))
 	if err != nil {
-		logrus.Printf("Cannot create request %s", err.Error())
-		return "", err
+		return "", fmt.Errorf("cannot create request, err: %w", err)
 	}
 	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("Authorization", "Bearer "+aS.Token)
+	req.Header.Add("Authorization", "Bearer "+s.Token)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		logrus.Printf("Can't get response, err: %s", err.Error())
-		return "", err
+		return "", fmt.Errorf("cannot get response, err: %w", err)
 	}
 	defer resp.Body.Close()
-
-	data, _ := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("cannot read response body, err: %w", err)
+	}
 
 	var responseAI Response
 	err = json.Unmarshal(data, &responseAI)
 	if err != nil {
-		logrus.Printf("Cannot unmarshall response body %s", err.Error())
-		return "", err
+		return "", fmt.Errorf("cannot unmarshal reponse body, err: %w", err)
 	}
-
 	if len(responseAI.Choices) == 0 {
 		return "", errors.New(responseAI.Error["message"])
 	}
-
 	return responseAI.Choices[0]["text"].(string), nil
 }
