@@ -1,9 +1,11 @@
 package service
 
 import (
+	"fmt"
 	"os"
 
 	"telebotai/pkg/ai"
+	"telebotai/pkg/telegram"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -14,21 +16,21 @@ func New() *Service {
 	return &Service{}
 }
 
-func (s *Service) MustRun() {
+func (s *Service) Run() error {
 	openai_key := os.Getenv("OPENAI_API_KEY")
 	if openai_key == "" {
-		log.Fatal("OPENAI_API_KEY env is empty")
+		return fmt.Errorf("OPENAI_API_KEY env is empty")
 	}
-	aiService, err := ai.NewAiService(openai_key, "configs/api_request.json")
+	aiService, err := ai.NewAiService(openai_key)
 	if err != nil {
-		log.WithError(err).Fatalf("failed to create AI Service")
+		return fmt.Errorf("failed to create AI Service, err: %w", err)
 	}
 
-	bot, err := NewTelegramBot(openai_key, aiService)
+	bot, err := telegram.NewBot(openai_key, aiService)
 	if err != nil {
-		log.WithError(err).Fatalf("failed connect telegram bot")
+		return fmt.Errorf("failed connect telegram bot, err: %w", err)
 	}
-	bot.Listen()
+	return bot.Listen()
 }
 
 func (s *Service) Stop() {

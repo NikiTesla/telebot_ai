@@ -3,7 +3,6 @@ package ai
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -37,10 +36,14 @@ type Request struct {
 
 // CreateAiService gets token string
 // and name of file with configuration of OpenAI API
-func NewAiService(token string, configFilename string) (*Service, error) {
+func NewAiService(token string) (*Service, error) {
+	configFilename := os.Getenv("OPENAI_CONFIG_FILE")
+	if configFilename == "" {
+		return nil, fmt.Errorf("OPENAI_CONFIG_FILE env is empty")
+	}
 	rawData, err := os.ReadFile(configFilename)
 	if err != nil {
-		return nil, fmt.Errorf("cannot read config file")
+		return nil, fmt.Errorf("cannot read config file, err: %w", err)
 	}
 	var requestConfig Request
 	if err = json.Unmarshal(rawData, &requestConfig); err != nil {
@@ -79,14 +82,13 @@ func (s *Service) MakeRequest(text string) (answer string, err error) {
 	if err != nil {
 		return "", fmt.Errorf("cannot read response body, err: %w", err)
 	}
-
 	var responseAI Response
 	err = json.Unmarshal(data, &responseAI)
 	if err != nil {
 		return "", fmt.Errorf("cannot unmarshal reponse body, err: %w", err)
 	}
 	if len(responseAI.Choices) == 0 {
-		return "", errors.New(responseAI.Error["message"])
+		return "", fmt.Errorf(responseAI.Error["message"])
 	}
 	return responseAI.Choices[0]["text"].(string), nil
 }

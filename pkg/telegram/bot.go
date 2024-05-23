@@ -1,4 +1,4 @@
-package service
+package telegram
 
 import (
 	"fmt"
@@ -9,48 +9,55 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type TelegramBot struct {
+type Bot struct {
 	bot       *tgbotapi.BotAPI
 	aiService *ai.Service
 }
 
-func NewTelegramBot(token string, aiService *ai.Service) (*TelegramBot, error) {
+func NewBot(token string, aiService *ai.Service) (*Bot, error) {
 	bot, err := tgbotapi.NewBotAPI(os.Getenv("TELEBOT_API"))
 	if err != nil {
 		log.WithError(err).Fatal("failed to connect to telegram bot")
 	}
-	return &TelegramBot{
+	return &Bot{
 		bot:       bot,
 		aiService: aiService,
 	}, err
 }
 
-func (tB *TelegramBot) Listen() {
+func (b *Bot) Listen() error {
 	updateConfig := tgbotapi.NewUpdate(0)
 	updateConfig.Timeout = 30
-	updates, err := tB.bot.GetUpdatesChan(updateConfig)
+	updates, err := b.bot.GetUpdatesChan(updateConfig)
 	if err != nil {
-		log.WithError(err).Fatal("filed to get updates")
+		return fmt.Errorf("filed to get updates, err: %w", err)
 	}
 
 	for update := range updates {
 		if update.Message == nil {
+			log.Debug("update message is nil")
 			continue
 		}
 		msg := tgbotapi.NewMessage(update.Message.Chat.ID, update.Message.Text)
 		msg.ReplyToMessageID = update.Message.MessageID
 
-		go tB.processMessage(msg)
+		go func() {
+			if err := b.processMessage(msg); err != nil {
+				log.WithError(err).Error("failed to process message")
+			}
+		}()
 	}
+	return nil
 }
 
-func (tB *TelegramBot) processMessage(msg tgbotapi.MessageConfig) error {
-	aiAnswer, err := tB.aiService.MakeRequest(msg.Text)
+func (b *Bot) processMessage(msg tgbotapi.MessageConfig) error {
+	log.Debugf("processing message: %s", msg.Text)
+	aiAnswer, err := b.aiService.MakeRequest(msg.Text)
 	if err != nil {
 		return fmt.Errorf("failed to make request, err: %w", err)
 	}
 	msg.Text = aiAnswer
-	if _, err := tB.bot.Send(msg); err != nil {
+	if _, err := b.bot.Send(msg); err != nil {
 		return fmt.Errorf("failed to send message, err: %w", err)
 	}
 	return nil
